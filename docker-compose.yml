@@ -1,0 +1,13 @@
+services:
+  aadhaar-detector:
+    build: .
+    container_name: aadhaar-detector
+    ports:
+      - "6080:6080"
+    environment:
+      AADHAAR_INPUT_DIR: /data/input
+      AADHAAR_OUTPUT_DIR: /data/output
+      VNC_RESOLUTION: 1280x900x24
+    volumes:
+      - ./client-data/input:/data/input
+      - ./client-data/output:/data/output

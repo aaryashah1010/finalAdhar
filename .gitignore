@@ -1,0 +1,44 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python tooling/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local temp/runtime artifacts
+.tmp/
+tmp*/
+*.log
+
+# JS/TS dependency modules (if present)
+node_modules/
+
+# Runtime state and downloaded models
+state/
+models/
+session.json
+
+.early.coverage
