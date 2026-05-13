@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -7,7 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AADHAAR_INPUT_DIR=/data/input \
     AADHAAR_OUTPUT_DIR=/data/output
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Retries=5 \
+    && apt-get install -y --no-install-recommends --fix-missing -o Acquire::Retries=5 \
     fluxbox \
     fonts-dejavu \
     libegl1 \
