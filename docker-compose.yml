@@ -9,5 +9,5 @@ services:
       AADHAAR_OUTPUT_DIR: /data/output
       VNC_RESOLUTION: 1280x900x24
     volumes:
-      - ./client-data/input:/data/input
-      - ./client-data/output:/data/output
+      - ${AADHAAR_HOST_INPUT:-./client-data/input}:/data/input
+      - ${AADHAAR_HOST_OUTPUT:-./client-data/output}:/data/output
