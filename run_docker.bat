@@ -2,6 +2,7 @@
 setlocal
 
 set "APP_URL=http://localhost:6080/vnc.html?autoconnect=true^&resize=scale"
+set "APP_IMAGE=finaladhar-aadhaar-detector:latest"
 
 cd /d "%~dp0"
 
@@ -65,12 +66,24 @@ echo Keep this window open while using the app.
 echo.
 
 start "" "%APP_URL%"
-docker compose build
+docker image inspect "%APP_IMAGE%" >nul 2>nul
 if errorlevel 1 (
-    echo.
-    echo Docker build failed.
-    pause
-    exit /b 1
+    echo Docker image not found locally. Building it now.
+    docker compose build
+    if errorlevel 1 (
+        echo.
+        echo Docker build failed.
+        echo.
+        echo If this PC cannot download Debian packages, build the image on another PC:
+        echo   docker compose build
+        echo   docker save %APP_IMAGE% -o finaladhar-aadhaar-detector.tar
+        echo Then copy the TAR here and load it:
+        echo   docker load -i finaladhar-aadhaar-detector.tar
+        pause
+        exit /b 1
+    )
+) else (
+    echo Docker image found locally. Skipping build.
 )
 
 docker compose up

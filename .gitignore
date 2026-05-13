@@ -25,6 +25,7 @@ htmlcov/
 # Build/distribution artifacts
 build/
 dist/
+*.tar
 *.egg-info/
 .eggs/
 

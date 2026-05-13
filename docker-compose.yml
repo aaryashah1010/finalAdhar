@@ -1,5 +1,6 @@
 services:
   aadhaar-detector:
+    image: finaladhar-aadhaar-detector:latest
     build: .
     container_name: aadhaar-detector
     ports:
