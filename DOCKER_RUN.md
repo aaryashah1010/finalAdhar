@@ -17,6 +17,17 @@ Double-click:
 run_docker.bat
 ```
 
+For shared/network folders, use the staged launcher instead:
+
+```text
+run_docker_staged.bat
+```
+
+It copies all PDFs from one selected shared parent folder, including all
+subfolders, into a local working folder before Docker starts. The detector
+then only reads and moves local files, avoiding network-drive permission
+problems inside Docker.
+
 Or run manually:
 
 ```powershell
@@ -45,6 +56,37 @@ client-data/output
 
 Docker maps those folders into the container as `/data/input` and `/data/output`.
 
+## Staged Network Folder Mode
+
+Use this when the PDFs are on a mapped drive such as `T:` or a UNC path such
+as `\\SERVER\Share\ParentFolder`.
+
+Double-click:
+
+```text
+run_docker_staged.bat
+```
+
+The script will:
+
+1. Ask for the shared parent folder.
+2. Clear `client-data\staged-run\input`.
+3. Copy all PDFs recursively from the shared folder into local input.
+4. Start Docker using:
+
+```text
+client-data\staged-run\input
+client-data\staged-run\deleted
+```
+
+Deleted Aadhaar files will be moved into:
+
+```text
+client-data\staged-run\deleted
+```
+
+Nothing is copied back to the shared folder.
+
 ## What To Send To Client
 
 Send the project folder with these files:
@@ -54,6 +96,7 @@ Dockerfile
 docker-compose.yml
 docker-entrypoint.sh
 run_docker.bat
+run_docker_staged.bat
 DOCKER_RUN.md
 requirements.txt
 app.py
