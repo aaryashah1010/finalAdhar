@@ -31,11 +31,15 @@ if errorlevel 1 (
 )
 
 set "WORK_ROOT=%CD%\client-data\staged-run"
+for /f "usebackq delims=" %%T in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "RUN_ID=%%T"
 set "LOCAL_INPUT=%WORK_ROOT%\input"
-set "LOCAL_OUTPUT=%WORK_ROOT%\deleted"
+set "LOCAL_OUTPUT=%WORK_ROOT%\deleted\%RUN_ID%"
+set "REPORT_DIR=%WORK_ROOT%\reports"
+set "SYNC_SCRIPT=%CD%\tools\sync_deleted_to_shared.ps1"
 
 if not exist "%WORK_ROOT%" mkdir "%WORK_ROOT%"
 if not exist "%LOCAL_OUTPUT%" mkdir "%LOCAL_OUTPUT%"
+if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
 echo Select the SHARED parent folder that contains PDFs and subfolders.
 echo Example: \\SERVER\Share\ParentFolder
@@ -110,4 +114,48 @@ echo.
 echo Docker app stopped.
 echo Deleted Aadhaar files are in:
 echo %LOCAL_OUTPUT%
+
+echo.
+choice /C YN /M "Sync deleted files to shared output and remove matching originals from shared input"
+if errorlevel 2 goto end
+
+if not exist "%SYNC_SCRIPT%" (
+    echo Sync script not found:
+    echo %SYNC_SCRIPT%
+    echo Cannot sync back to shared folders.
+    goto end
+)
+
+echo.
+echo Select the SHARED output folder where deleted Aadhaar files should be copied.
+echo Example: \\SERVER\Share\AadhaarDeleted
+for /f "usebackq delims=" %%O in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Select SHARED output folder for deleted Aadhaar files'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"`) do set "SHARED_OUTPUT=%%O"
+
+if "%SHARED_OUTPUT%"=="" (
+    echo No shared output folder selected. Skipping sync.
+    goto end
+)
+
+echo.
+echo This will:
+echo   1. Copy deleted Aadhaar files to: %SHARED_OUTPUT%
+echo   2. Remove matching originals from: %SHARED_INPUT%
+echo.
+echo Files are removed from shared input only after copy verification.
+choice /C YN /M "Proceed with shared-drive removal"
+if errorlevel 2 goto end
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC_SCRIPT%" -SharedInput "%SHARED_INPUT%" -LocalDeleted "%LOCAL_OUTPUT%" -SharedOutput "%SHARED_OUTPUT%" -ReportDir "%REPORT_DIR%"
+if errorlevel 1 (
+    echo.
+    echo Sync finished with errors. Check the report in:
+    echo %REPORT_DIR%
+    goto end
+)
+
+echo.
+echo Sync completed successfully. Report is in:
+echo %REPORT_DIR%
+
+:end
 pause

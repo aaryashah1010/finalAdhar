@@ -26,7 +26,9 @@ run_docker_staged.bat
 It copies all PDFs from one selected shared parent folder, including all
 subfolders, into a local working folder before Docker starts. The detector
 then only reads and moves local files, avoiding network-drive permission
-problems inside Docker.
+problems inside Docker. After the app stops, the launcher can copy deleted
+Aadhaar files back to a shared output folder and remove only the matching
+original files from the shared input folder.
 
 Or run manually:
 
@@ -85,7 +87,20 @@ Deleted Aadhaar files will be moved into:
 client-data\staged-run\deleted
 ```
 
-Nothing is copied back to the shared folder.
+After the Docker app stops, the script asks whether to sync deleted files
+back to the shared drive. If you choose yes, it will:
+
+1. Ask for a shared output folder.
+2. Copy the deleted Aadhaar files there, preserving subfolders.
+3. Verify the copied file hash.
+4. Remove only the matching original file from the shared input folder.
+
+The shared input folder is never cleared. Non-Aadhaar files stay in place.
+Sync reports are written to:
+
+```text
+client-data\staged-run\reports
+```
 
 ## What To Send To Client
 
@@ -97,6 +112,7 @@ docker-compose.yml
 docker-entrypoint.sh
 run_docker.bat
 run_docker_staged.bat
+tools/sync_deleted_to_shared.ps1
 DOCKER_RUN.md
 requirements.txt
 app.py

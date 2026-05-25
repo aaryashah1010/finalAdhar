@@ -345,10 +345,21 @@ class ReviewWindow(QMainWindow):
 
     def _move_file(self, src: Path) -> None:
         self.output_folder.mkdir(parents=True, exist_ok=True)
-        dst = self.output_folder / src.name
+        try:
+            rel = src.resolve().relative_to(self.input_folder.resolve())
+        except ValueError:
+            rel = Path(src.name)
+
+        dst = self.output_folder / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
 
         if dst.exists():
-            dst = self.output_folder / f"{src.stem}_1{src.suffix}"
+            base = dst.with_suffix("")
+            suffix = dst.suffix
+            i = 1
+            while dst.exists():
+                dst = base.with_name(f"{base.name}_{i}").with_suffix(suffix)
+                i += 1
 
         try:
             shutil.move(str(src), str(dst))
