@@ -218,6 +218,17 @@ class AadhaarFileScanner:
             page_images:  List[np.ndarray] = []
             all_pages:    List[np.ndarray] = []   # every rendered page for preview
 
+            if filename_profile["aadhaar_named"]:
+                for page_dict in renderer.extract_pages():
+                    all_pages.append(page_dict["image"])
+                return DetectionResult(
+                    path          = pdf_path,
+                    is_aadhaar    = True,
+                    confidence    = 0.95,
+                    reasons       = ["Filename indicates Aadhaar"],
+                    preview_image = self._stitch_pages(all_pages),
+                )
+
             # ── Pre-extract embedded text (ms for digital PDFs) ───────────
             embedded_texts: List[str] = []
             try:
@@ -354,6 +365,7 @@ class AadhaarFileScanner:
                 "aadhaar" in compact
                 or "aadhar" in compact
                 or "uidai" in compact
+                or "uid" in tokens
             ),
         }
 
