@@ -129,6 +129,24 @@ _NATIVE_MR = (
 _NATIVE_ALL = _NATIVE_HI + _NATIVE_GU + _NATIVE_MR
 
 
+_NEGATIVE_FILENAME_TERMS = frozenset({
+    "bank",
+    "passbook",
+    "cheque",
+    "check",
+})
+
+_NEGATIVE_FILENAME_PHRASES = (
+    "pan card",
+    "cancel cheque",
+    "cancelled cheque",
+    "canceled cheque",
+    "cancel check",
+    "cancelled check",
+    "canceled check",
+)
+
+
 # ── Result model ──────────────────────────────────────────────────────────────
 
 @dataclass
@@ -177,6 +195,19 @@ class AadhaarFileScanner:
 
     def scan(self, pdf_path: Path) -> DetectionResult:
         """Full detection pipeline for one PDF. Never raises."""
+        filename_profile = self._classify_filename(pdf_path)
+        if filename_profile["pure_numeric"]:
+            logger.info(
+                "%s — skipped by pure numeric filename form pattern.",
+                pdf_path.name,
+            )
+            return DetectionResult(
+                pdf_path,
+                False,
+                0.0,
+                ["Skipped: pure numeric filename form pattern"],
+            )
+
         renderer = PDFProcessor(dpi=self.render_dpi)
         try:
             load = renderer.load_pdf(str(pdf_path))
@@ -256,6 +287,13 @@ class AadhaarFileScanner:
                 if hit:
                     has_qr = (self._detect_qr_enhanced(page_images[i])
                               if i < len(page_images) else False)
+                    if filename_profile["negative"] and not has_qr:
+                        logger.info(
+                            "%s — weak Aadhaar keyword ignored because filename "
+                            "looks like PAN/cheque/bank evidence (%s).",
+                            pdf_path.name, reason,
+                        )
+                        continue
                     conf   = 0.75 if has_qr else 0.55
                     return DetectionResult(
                         path          = pdf_path,
@@ -286,6 +324,38 @@ class AadhaarFileScanner:
             return DetectionResult(pdf_path, False, 0.0, [f"Error: {exc}"])
         finally:
             renderer.cleanup()
+
+    # ── Filename signal helpers ──────────────────────────────────────────────
+
+    @staticmethod
+    def _classify_filename(pdf_path: Path) -> dict:
+        """
+        Return lightweight filename hints used to reduce known false positives.
+
+        These hints never replace OCR/core Aadhaar evidence. The only hard skip
+        is a pure numeric stem, which maps to a known non-Aadhaar form pattern.
+        """
+        stem = pdf_path.stem.strip().lower()
+        spaced = re.sub(r"[^a-z0-9]+", " ", stem).strip()
+        compact = re.sub(r"[^a-z0-9]+", "", stem)
+        tokens = set(spaced.split())
+
+        is_pan = "pan" in tokens or "pancard" in compact
+        has_negative_term = (
+            bool(tokens & _NEGATIVE_FILENAME_TERMS)
+            or any(term in compact for term in _NEGATIVE_FILENAME_TERMS)
+        )
+        has_negative_phrase = any(phrase in spaced for phrase in _NEGATIVE_FILENAME_PHRASES)
+
+        return {
+            "pure_numeric": stem.isdigit(),
+            "negative": is_pan or has_negative_term or has_negative_phrase,
+            "aadhaar_named": (
+                "aadhaar" in compact
+                or "aadhar" in compact
+                or "uidai" in compact
+            ),
+        }
 
     # ── OCR: single multilingual pass with early exit ────────────────────────
 
