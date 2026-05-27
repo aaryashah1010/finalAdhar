@@ -395,6 +395,7 @@ class ReviewWindow(QMainWindow):
             input_root=str(self.input_folder),
             output_root=str(mask_tmp_root),
             session_path=str(self.output_folder / "mask_keep_session.json"),
+            render_dpi=120,
             close_after_save=True,
         )
         window.save_completed.connect(

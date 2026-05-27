@@ -65,6 +65,7 @@ $maskedTmpDirName = ".masked_keep_tmp"
 $files = @(
     Get-ChildItem -LiteralPath $LocalDeleted -File -Recurse |
         Where-Object {
+            $_.Extension -ieq ".pdf" -and
             $_.Name -ne $maskedManifestName -and
             $_.FullName -notmatch [regex]::Escape([System.IO.Path]::DirectorySeparatorChar + $maskedTmpDirName + [System.IO.Path]::DirectorySeparatorChar)
         }

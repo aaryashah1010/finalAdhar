@@ -193,8 +193,11 @@ class PDFRedactionTool(QMainWindow):
     ) -> None:
         super().__init__()
 
-        self.setWindowTitle("Manual PDF Redaction Tool")
-        self.resize(1400, 900)
+        self.setWindowTitle(
+            "Mask & Keep" if close_after_save else "Manual PDF Redaction Tool"
+        )
+        self.resize(1180 if close_after_save else 1400,
+                    760 if close_after_save else 900)
 
         self._render_scale = max(1.0, render_dpi / 72.0)
         self._render_matrix = fitz.Matrix(self._render_scale, self._render_scale)
@@ -312,7 +315,10 @@ class PDFRedactionTool(QMainWindow):
         toolbar.addAction(self.redo_action)
         toolbar.addSeparator()
 
-        self.save_action = QAction("Save", self)
+        self.save_action = QAction(
+            "Save Mask & Keep" if self._close_after_save else "Save",
+            self,
+        )
         self.save_action.triggered.connect(self.save_pdf)
         toolbar.addAction(self.save_action)
 
