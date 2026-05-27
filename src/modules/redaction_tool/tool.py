@@ -180,6 +180,8 @@ class PDFCanvas(QGraphicsView):
 class PDFRedactionTool(QMainWindow):
     """PyQt5 manual PDF masking tool with permanent redaction save."""
 
+    save_completed = pyqtSignal(str)
+
     def __init__(
         self,
         pdf_files: Optional[List[str]] = None,
@@ -187,6 +189,7 @@ class PDFRedactionTool(QMainWindow):
         output_root: Optional[str] = None,
         session_path: str = "session.json",
         render_dpi: int = DEFAULT_RENDER_DPI,
+        close_after_save: bool = False,
     ) -> None:
         super().__init__()
 
@@ -200,6 +203,7 @@ class PDFRedactionTool(QMainWindow):
         self._session_path = Path(session_path).resolve()
         self._input_root: Optional[Path] = Path(input_root).resolve() if input_root else None
         self._output_root: Optional[Path] = Path(output_root).resolve() if output_root else None
+        self._close_after_save = close_after_save
 
         self._pdf_files: List[Path] = []
         self._pdf_fingerprint = ""
@@ -648,6 +652,12 @@ class PDFRedactionTool(QMainWindow):
         self._last_processed_index = self._current_file_index
         self._write_session()
         self._set_status(f"Saved: {target_path.name}")
+        if self._close_after_save:
+            self._close_current_doc()
+            self.save_completed.emit(str(target_path))
+            self.close()
+        else:
+            self.save_completed.emit(str(target_path))
         return True
 
     def save_and_next_pdf(self) -> None:

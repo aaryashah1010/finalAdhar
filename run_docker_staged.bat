@@ -116,7 +116,7 @@ echo Deleted Aadhaar files are in:
 echo %LOCAL_OUTPUT%
 
 echo.
-choice /C YN /M "Sync deleted files to shared output and remove matching originals from shared input"
+choice /C YN /M "Sync deleted/masked files back to shared drive"
 if errorlevel 2 goto end
 
 if not exist "%SYNC_SCRIPT%" (
@@ -140,12 +140,13 @@ echo.
 echo This will:
 echo   1. Copy deleted Aadhaar files to: %SHARED_OUTPUT%
 echo   2. Remove matching originals from: %SHARED_INPUT%
+echo   3. Replace masked-and-kept originals in: %SHARED_INPUT%
 echo.
-echo Files are removed from shared input only after copy verification.
+echo Shared files are changed only after copy verification.
 choice /C YN /M "Proceed with shared-drive removal"
 if errorlevel 2 goto end
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC_SCRIPT%" -SharedInput "%SHARED_INPUT%" -LocalDeleted "%LOCAL_OUTPUT%" -SharedOutput "%SHARED_OUTPUT%" -ReportDir "%REPORT_DIR%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC_SCRIPT%" -SharedInput "%SHARED_INPUT%" -LocalDeleted "%LOCAL_OUTPUT%" -SharedOutput "%SHARED_OUTPUT%" -LocalInput "%LOCAL_INPUT%" -ReportDir "%REPORT_DIR%"
 if errorlevel 1 (
     echo.
     echo Sync finished with errors. Check the report in:

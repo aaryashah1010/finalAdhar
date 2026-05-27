@@ -15,8 +15,11 @@ Flow:
 from __future__ import annotations
 
 import logging
+import os
+import json
 import shutil
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Deque, List, Optional
 
@@ -32,8 +35,12 @@ from PyQt5.QtWidgets import (
 )
 
 from src.aadhaar_detector import AadhaarFileScanner, DetectionResult
+from src.utils.file_utils import atomic_json_write, safe_json_read
 
 logger = logging.getLogger(__name__)
+
+MASKED_KEEP_MANIFEST = "_masked_keep_manifest.json"
+MASKED_KEEP_TMP_DIR = ".masked_keep_tmp"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -113,6 +120,8 @@ class ReviewWindow(QMainWindow):
         # Review queue: DetectionResult objects waiting to be shown
         self._queue: Deque[DetectionResult] = deque()
         self._current: Optional[DetectionResult] = None
+        self._mask_window: Optional[QMainWindow] = None
+        self._mask_save_completed = False
 
         # Counters
         self._total_scanned  = 0
@@ -188,6 +197,16 @@ class ReviewWindow(QMainWindow):
         self._keep_btn.setEnabled(False)
         self._keep_btn.clicked.connect(self._on_keep)
         btn_row.addWidget(self._keep_btn)
+
+        self._mask_keep_btn = QPushButton("Mask & Keep")
+        self._mask_keep_btn.setFixedHeight(44)
+        self._mask_keep_btn.setFont(QFont("Segoe UI", 12))
+        self._mask_keep_btn.setStyleSheet(
+            "background:#2980b9; color:white; border-radius:6px;"
+        )
+        self._mask_keep_btn.setEnabled(False)
+        self._mask_keep_btn.clicked.connect(self._on_mask_keep)
+        btn_row.addWidget(self._mask_keep_btn)
 
         self._delete_btn = QPushButton("🗑  Delete")
         self._delete_btn.setFixedHeight(44)
@@ -295,6 +314,7 @@ class ReviewWindow(QMainWindow):
             self._img_label.setText("(No preview available)")
 
         self._keep_btn.setEnabled(True)
+        self._mask_keep_btn.setEnabled(True)
         self._delete_btn.setEnabled(True)
 
     def _display_image(self, bgr: np.ndarray) -> None:
@@ -313,6 +333,7 @@ class ReviewWindow(QMainWindow):
         self._img_label.setText("")
         self._img_label.setPixmap(QPixmap())
         self._keep_btn.setEnabled(False)
+        self._mask_keep_btn.setEnabled(False)
         self._delete_btn.setEnabled(False)
 
     def _update_queue_label(self) -> None:
@@ -329,6 +350,7 @@ class ReviewWindow(QMainWindow):
             logger.info("Kept: %s", self._current.path.name)
         self._current = None
         self._keep_btn.setEnabled(False)
+        self._mask_keep_btn.setEnabled(False)
         self._delete_btn.setEnabled(False)
         self._show_next()
 
@@ -338,10 +360,80 @@ class ReviewWindow(QMainWindow):
         result = self._current
         self._current = None
         self._keep_btn.setEnabled(False)
+        self._mask_keep_btn.setEnabled(False)
         self._delete_btn.setEnabled(False)
 
         self._move_file(result.path)
         self._show_next()
+
+    def _on_mask_keep(self) -> None:
+        if not self._current:
+            return
+
+        result = self._current
+        self._keep_btn.setEnabled(False)
+        self._mask_keep_btn.setEnabled(False)
+        self._delete_btn.setEnabled(False)
+        self._mask_save_completed = False
+
+        try:
+            from src.modules.redaction_tool.tool import PDFRedactionTool
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Masking Unavailable",
+                f"Could not open masking tool:\n{exc}",
+            )
+            self._restore_current_actions(result)
+            return
+
+        mask_tmp_root = self.output_folder / MASKED_KEEP_TMP_DIR
+        mask_tmp_root.mkdir(parents=True, exist_ok=True)
+
+        window = PDFRedactionTool(
+            pdf_files=[str(result.path)],
+            input_root=str(self.input_folder),
+            output_root=str(mask_tmp_root),
+            session_path=str(self.output_folder / "mask_keep_session.json"),
+            close_after_save=True,
+        )
+        window.save_completed.connect(
+            lambda saved_path, item=result: self._on_mask_saved(item, Path(saved_path))
+        )
+        window.destroyed.connect(lambda _obj=None, item=result: self._on_mask_closed(item))
+        self._mask_window = window
+        window.show()
+
+    def _on_mask_saved(self, result: DetectionResult, masked_path: Path) -> None:
+        self._mask_save_completed = True
+        try:
+            self._replace_with_masked_pdf(result.path, masked_path)
+            rel = self._relative_to_input(result.path)
+            self._record_masked_keep(rel)
+            logger.info("Masked and kept: %s", result.path.name)
+            self._status.setText(f"Masked and kept: {result.path.name}")
+            self._current = None
+            self._show_next()
+        except Exception as exc:
+            logger.error("Mask & Keep failed for %s: %s", result.path.name, exc)
+            QMessageBox.warning(
+                self,
+                "Mask Failed",
+                f"Could not save masked PDF:\n{exc}",
+            )
+            self._mask_save_completed = False
+            self._restore_current_actions(result)
+
+    def _on_mask_closed(self, result: DetectionResult) -> None:
+        self._mask_window = None
+        if not self._mask_save_completed and self._current is result:
+            self._restore_current_actions(result)
+
+    def _restore_current_actions(self, result: DetectionResult) -> None:
+        if self._current is result:
+            self._keep_btn.setEnabled(True)
+            self._mask_keep_btn.setEnabled(True)
+            self._delete_btn.setEnabled(True)
 
     def _move_file(self, src: Path) -> None:
         self.output_folder.mkdir(parents=True, exist_ok=True)
@@ -369,6 +461,52 @@ class ReviewWindow(QMainWindow):
             logger.error("Move failed for %s: %s", src.name, exc)
             QMessageBox.warning(self, "Move Failed",
                                 f"Could not move {src.name}:\n{exc}")
+
+    def _relative_to_input(self, src: Path) -> Path:
+        try:
+            return src.resolve().relative_to(self.input_folder.resolve())
+        except ValueError:
+            return Path(src.name)
+
+    def _replace_with_masked_pdf(self, original_path: Path, masked_path: Path) -> None:
+        if not masked_path.is_file():
+            raise FileNotFoundError(f"Masked PDF was not saved: {masked_path}")
+        if not original_path.is_file():
+            raise FileNotFoundError(f"Original PDF no longer exists: {original_path}")
+
+        temp_path = original_path.with_name(
+            f".{original_path.stem}.masked_tmp{original_path.suffix}"
+        )
+        shutil.copy2(str(masked_path), str(temp_path))
+        os.replace(str(temp_path), str(original_path))
+
+        try:
+            masked_path.unlink()
+        except OSError:
+            logger.debug("Could not remove temporary masked copy: %s", masked_path)
+
+    def _record_masked_keep(self, rel_path: Path) -> None:
+        manifest_path = self.output_folder / MASKED_KEEP_MANIFEST
+        payload, err = safe_json_read(manifest_path)
+        if err or not isinstance(payload, dict):
+            payload = {"schema_version": "1.0", "files": []}
+
+        rel = rel_path.as_posix()
+        files = [f for f in payload.get("files", []) if isinstance(f, str)]
+        if rel not in files:
+            files.append(rel)
+
+        payload["schema_version"] = "1.0"
+        payload["files"] = sorted(files)
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self.output_folder.mkdir(parents=True, exist_ok=True)
+        try:
+            atomic_json_write(manifest_path, payload)
+        except PermissionError:
+            manifest_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
 
     # ── Output folder ─────────────────────────────────────────────────────────
 

@@ -88,12 +88,14 @@ client-data\staged-run\deleted
 ```
 
 After the Docker app stops, the script asks whether to sync deleted files
-back to the shared drive. If you choose yes, it will:
+and masked files back to the shared drive. If you choose yes, it will:
 
 1. Ask for a shared output folder.
 2. Copy the deleted Aadhaar files there, preserving subfolders.
 3. Verify the copied file hash.
 4. Remove only the matching original file from the shared input folder.
+5. Replace any Mask & Keep originals in the shared input folder with the
+   locally masked PDF, preserving the same filename and subfolder path.
 
 The shared input folder is never cleared. Non-Aadhaar files stay in place.
 Sync reports are written to:
@@ -101,6 +103,14 @@ Sync reports are written to:
 ```text
 client-data\staged-run\reports
 ```
+
+In the review UI:
+
+- `Keep` leaves the shared input file unchanged.
+- `Delete` copies the file to the shared output folder and removes the matching
+  shared input original during sync.
+- `Mask & Keep` opens the manual masking tool. After saving, sync replaces the
+  matching shared input original with the masked PDF, using the same filename.
 
 ## What To Send To Client
 
