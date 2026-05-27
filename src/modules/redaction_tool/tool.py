@@ -194,7 +194,7 @@ class PDFRedactionTool(QMainWindow):
         super().__init__()
 
         self.setWindowTitle(
-            "Mask & Keep" if close_after_save else "Manual PDF Redaction Tool"
+            "Mask PDF" if close_after_save else "Manual PDF Redaction Tool"
         )
         self.resize(1180 if close_after_save else 1400,
                     760 if close_after_save else 900)
@@ -256,20 +256,25 @@ class PDFRedactionTool(QMainWindow):
         self.prev_pdf_btn = QPushButton("Previous PDF")
         self.next_pdf_btn = QPushButton("Next PDF")
         self.skip_pdf_btn = QPushButton("Skip PDF")
+        self.save_pdf_btn = QPushButton("Save")
 
         self.prev_page_btn.clicked.connect(self.prev_page)
         self.next_page_btn.clicked.connect(self.next_page)
         self.prev_pdf_btn.clicked.connect(self.prev_pdf)
         self.next_pdf_btn.clicked.connect(self.next_pdf)
         self.skip_pdf_btn.clicked.connect(self.skip_pdf)
+        self.save_pdf_btn.clicked.connect(self.save_pdf)
 
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.prev_page_btn)
         bottom_row.addWidget(self.next_page_btn)
         bottom_row.addSpacing(12)
-        bottom_row.addWidget(self.prev_pdf_btn)
-        bottom_row.addWidget(self.next_pdf_btn)
-        bottom_row.addWidget(self.skip_pdf_btn)
+        if self._close_after_save:
+            bottom_row.addWidget(self.save_pdf_btn)
+        else:
+            bottom_row.addWidget(self.prev_pdf_btn)
+            bottom_row.addWidget(self.next_pdf_btn)
+            bottom_row.addWidget(self.skip_pdf_btn)
 
         container = QWidget(self)
         layout = QVBoxLayout(container)
@@ -316,7 +321,7 @@ class PDFRedactionTool(QMainWindow):
         toolbar.addSeparator()
 
         self.save_action = QAction(
-            "Save Mask & Keep" if self._close_after_save else "Save",
+            "Save",
             self,
         )
         self.save_action.triggered.connect(self.save_pdf)
@@ -773,6 +778,7 @@ class PDFRedactionTool(QMainWindow):
         self.prev_pdf_btn.setEnabled(has_prev_pdf)
         self.next_pdf_btn.setEnabled(has_next_pdf)
         self.skip_pdf_btn.setEnabled(has_doc)
+        self.save_pdf_btn.setEnabled(has_doc)
 
         self.save_action.setEnabled(has_doc)
         self.undo_action.setEnabled(bool(self._undo_stack))

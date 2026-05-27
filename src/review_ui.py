@@ -198,7 +198,7 @@ class ReviewWindow(QMainWindow):
         self._keep_btn.clicked.connect(self._on_keep)
         btn_row.addWidget(self._keep_btn)
 
-        self._mask_keep_btn = QPushButton("Mask & Keep")
+        self._mask_keep_btn = QPushButton("Mask")
         self._mask_keep_btn.setFixedHeight(44)
         self._mask_keep_btn.setFont(QFont("Segoe UI", 12))
         self._mask_keep_btn.setStyleSheet(
