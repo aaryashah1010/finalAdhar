@@ -146,6 +146,35 @@ _NEGATIVE_FILENAME_PHRASES = (
     "canceled check",
 )
 
+_PAN_FILENAME_MARKERS = (
+    "pancard",
+    "pancopy",
+    "panfront",
+    "panback",
+    "panid",
+    "panno",
+    "pannum",
+    "pannumber",
+)
+
+_PAN_FILENAME_TOKENS = frozenset({
+    "pan",
+})
+
+_AADHAAR_FILENAME_MARKERS = (
+    "aadhaar",
+    "aadhar",
+    "adhaar",
+    "adharcard",
+    "adharno",
+    "uidai",
+)
+
+_AADHAAR_FILENAME_TOKENS = frozenset({
+    "adhar",
+    "uid",
+})
+
 
 # ── Result model ──────────────────────────────────────────────────────────────
 
@@ -208,6 +237,18 @@ class AadhaarFileScanner:
                 ["Skipped: pure numeric filename form pattern"],
             )
 
+        if filename_profile["pan_named"]:
+            logger.info(
+                "%s — skipped by PAN filename business rule.",
+                pdf_path.name,
+            )
+            return DetectionResult(
+                pdf_path,
+                False,
+                0.0,
+                ["Skipped: PAN filename"],
+            )
+
         renderer = PDFProcessor(dpi=self.render_dpi)
         try:
             load = renderer.load_pdf(str(pdf_path))
@@ -219,6 +260,10 @@ class AadhaarFileScanner:
             all_pages:    List[np.ndarray] = []   # every rendered page for preview
 
             if filename_profile["aadhaar_named"]:
+                logger.info(
+                    "%s — Aadhaar detected by filename rule.",
+                    pdf_path.name,
+                )
                 for page_dict in renderer.extract_pages():
                     all_pages.append(page_dict["image"])
                 return DetectionResult(
@@ -343,15 +388,19 @@ class AadhaarFileScanner:
         """
         Return lightweight filename hints used to reduce known false positives.
 
-        These hints never replace OCR/core Aadhaar evidence. The only hard skip
-        is a pure numeric stem, which maps to a known non-Aadhaar form pattern.
+        Pure numeric stems and PAN-named files are business-rule skips from the
+        client's file naming pattern. Aadhaar-named files are direct detections.
         """
         stem = pdf_path.stem.strip().lower()
         spaced = re.sub(r"[^a-z0-9]+", " ", stem).strip()
         compact = re.sub(r"[^a-z0-9]+", "", stem)
         tokens = set(spaced.split())
 
-        is_pan = "pan" in tokens or "pancard" in compact
+        is_pan = (
+            bool(tokens & _PAN_FILENAME_TOKENS)
+            or any(marker in compact for marker in _PAN_FILENAME_MARKERS)
+            or bool(re.match(r"^pan\d", compact))
+        )
         has_negative_term = (
             bool(tokens & _NEGATIVE_FILENAME_TERMS)
             or any(term in compact for term in _NEGATIVE_FILENAME_TERMS)
@@ -360,12 +409,11 @@ class AadhaarFileScanner:
 
         return {
             "pure_numeric": stem.isdigit(),
+            "pan_named": is_pan,
             "negative": is_pan or has_negative_term or has_negative_phrase,
             "aadhaar_named": (
-                "aadhaar" in compact
-                or "aadhar" in compact
-                or "uidai" in compact
-                or "uid" in tokens
+                any(marker in compact for marker in _AADHAAR_FILENAME_MARKERS)
+                or bool(tokens & _AADHAAR_FILENAME_TOKENS)
             ),
         }
 
