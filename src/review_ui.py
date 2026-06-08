@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import json
+import hashlib
 import shutil
 from collections import deque
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ from src.utils.file_utils import atomic_json_write, safe_json_read
 logger = logging.getLogger(__name__)
 
 MASKED_KEEP_MANIFEST = "_masked_keep_manifest.json"
+DELETED_MANIFEST = "_deleted_manifest.json"
 MASKED_KEEP_TMP_DIR = ".masked_keep_tmp"
 
 
@@ -438,30 +440,31 @@ class ReviewWindow(QMainWindow):
 
     def _move_file(self, src: Path) -> None:
         self.output_folder.mkdir(parents=True, exist_ok=True)
-        try:
-            rel = src.resolve().relative_to(self.input_folder.resolve())
-        except ValueError:
-            rel = Path(src.name)
-
-        dst = self.output_folder / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-
-        if dst.exists():
-            base = dst.with_suffix("")
-            suffix = dst.suffix
-            i = 1
-            while dst.exists():
-                dst = base.with_name(f"{base.name}_{i}").with_suffix(suffix)
-                i += 1
+        rel = self._relative_to_input(src)
+        dst = self._flat_output_path(src.name)
 
         try:
             shutil.move(str(src), str(dst))
+            self._record_deleted_file(rel, dst)
             logger.info("Moved: %s → %s", src.name, dst)
-            self._status.setText(f"Deleted: {src.name} → {dst.parent.name}/")
+            self._status.setText(f"Deleted: {src.name} → output folder")
         except Exception as exc:
             logger.error("Move failed for %s: %s", src.name, exc)
             QMessageBox.warning(self, "Move Failed",
                                 f"Could not move {src.name}:\n{exc}")
+
+    def _flat_output_path(self, filename: str) -> Path:
+        dst = self.output_folder / Path(filename).name
+        if not dst.exists():
+            return dst
+
+        stem = dst.stem
+        suffix = dst.suffix
+        counter = 2
+        while dst.exists():
+            dst = self.output_folder / f"{stem}__{counter}{suffix}"
+            counter += 1
+        return dst
 
     def _relative_to_input(self, src: Path) -> Path:
         try:
@@ -508,6 +511,44 @@ class ReviewWindow(QMainWindow):
                 json.dumps(payload, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
+
+    # ── Manifest helpers ──────────────────────────────────────────────────────
+
+    def _record_deleted_file(self, original_rel_path: Path, output_path: Path) -> None:
+        manifest_path = self.output_folder / DELETED_MANIFEST
+        payload, err = safe_json_read(manifest_path)
+        if err or not isinstance(payload, dict):
+            payload = {"schema_version": "1.0", "files": []}
+
+        output_name = output_path.name
+        files = [f for f in payload.get("files", []) if isinstance(f, dict)]
+        files = [f for f in files if f.get("output_file") != output_name]
+        files.append({
+            "output_file": output_name,
+            "original_relative_path": original_rel_path.as_posix(),
+            "sha256": self._file_sha256(output_path),
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        payload["schema_version"] = "1.0"
+        payload["files"] = files
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self.output_folder.mkdir(parents=True, exist_ok=True)
+        try:
+            atomic_json_write(manifest_path, payload)
+        except PermissionError:
+            manifest_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        hasher = hashlib.sha256()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
 
     # ── Output folder ─────────────────────────────────────────────────────────
 

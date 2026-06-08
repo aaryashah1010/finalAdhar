@@ -52,23 +52,23 @@ if "%SHARED_INPUT%"=="" (
 )
 
 echo.
-echo Local input folder:
-echo %LOCAL_INPUT%
-echo.
-echo Local deleted/output folder:
-echo %LOCAL_OUTPUT%
-echo.
-echo This will clear the local input folder and copy all PDFs from:
-echo %SHARED_INPUT%
-echo.
-choice /C YN /M "Continue"
-if errorlevel 2 exit /b 1
+echo Select the SHARED output folder where deleted Aadhaar files should be copied.
+echo Example: \\SERVER\Share\AadhaarDeleted
+for /f "usebackq delims=" %%O in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Select SHARED output folder for deleted Aadhaar files'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"`) do set "SHARED_OUTPUT=%%O"
+
+if "%SHARED_OUTPUT%"=="" (
+    echo No shared output folder selected.
+    pause
+    exit /b 1
+)
 
 if exist "%LOCAL_INPUT%" rmdir /s /q "%LOCAL_INPUT%"
 mkdir "%LOCAL_INPUT%"
 
 echo.
 echo Copying PDFs from shared folder to local input...
+echo From: %SHARED_INPUT%
+echo To:   %LOCAL_INPUT%
 robocopy "%SHARED_INPUT%" "%LOCAL_INPUT%" *.pdf /E /R:2 /W:2
 set "ROBOCOPY_EXIT=%ERRORLEVEL%"
 
@@ -87,14 +87,12 @@ echo.
 echo Copy complete.
 echo Starting Aadhaar detector using local folders only.
 echo.
-echo Input:  %AADHAAR_HOST_INPUT%
-echo Output: %AADHAAR_HOST_OUTPUT%
-echo.
-echo Browser URL:
-echo http://localhost:6080/vnc.html?autoconnect=true^&resize=scale
+echo Local input:        %AADHAAR_HOST_INPUT%
+echo Local deleted:      %AADHAAR_HOST_OUTPUT%
+echo Shared output:      %SHARED_OUTPUT%
+echo Browser will open after noVNC is ready.
 echo.
 
-start "" "%APP_URL%"
 docker image inspect "%APP_IMAGE%" >nul 2>nul
 if errorlevel 1 (
     echo Docker image not found locally. Building it now.
@@ -108,16 +106,38 @@ if errorlevel 1 (
     echo Docker image found locally. Skipping build.
 )
 
-docker compose up
+docker compose down >nul 2>nul
+docker compose up -d
+if errorlevel 1 (
+    echo Docker start failed.
+    pause
+    exit /b 1
+)
 
+echo.
+echo Waiting for noVNC to become ready...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='http://localhost:6080/vnc.html'; $deadline=(Get-Date).AddSeconds(120); while ((Get-Date) -lt $deadline) { try { $r=Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2; if ($r.StatusCode -ge 200) { Start-Sleep -Seconds 2; exit 0 } } catch { }; Start-Sleep -Seconds 1 }; exit 1"
+if errorlevel 1 (
+    echo noVNC did not become ready in time. Recent container logs:
+    docker compose logs --tail=100 aadhaar-detector
+    goto after_app
+)
+
+echo Opening browser:
+echo %APP_URL%
+start "" "%APP_URL%"
+
+echo.
+echo Aadhaar detector is running. Close the app window when review is finished.
+docker attach aadhaar-detector
+
+:after_app
 echo.
 echo Docker app stopped.
+docker compose down >nul 2>nul
+
 echo Deleted Aadhaar files are in:
 echo %LOCAL_OUTPUT%
-
-echo.
-choice /C YN /M "Sync deleted/masked files back to shared drive"
-if errorlevel 2 goto end
 
 if not exist "%SYNC_SCRIPT%" (
     echo Sync script not found:
@@ -127,24 +147,11 @@ if not exist "%SYNC_SCRIPT%" (
 )
 
 echo.
-echo Select the SHARED output folder where deleted Aadhaar files should be copied.
-echo Example: \\SERVER\Share\AadhaarDeleted
-for /f "usebackq delims=" %%O in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; $f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Select SHARED output folder for deleted Aadhaar files'; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"`) do set "SHARED_OUTPUT=%%O"
-
-if "%SHARED_OUTPUT%"=="" (
-    echo No shared output folder selected. Skipping sync.
-    goto end
-)
-
+echo Syncing deleted and masked files back to shared drive...
+echo Deleted files will be copied to: %SHARED_OUTPUT%
+echo Matching originals will be removed from: %SHARED_INPUT%
+echo Masked files will replace originals in: %SHARED_INPUT%
 echo.
-echo This will:
-echo   1. Copy deleted Aadhaar files to: %SHARED_OUTPUT%
-echo   2. Remove matching originals from: %SHARED_INPUT%
-echo   3. Replace masked-and-kept originals in: %SHARED_INPUT%
-echo.
-echo Shared files are changed only after copy verification.
-choice /C YN /M "Proceed with shared-drive removal"
-if errorlevel 2 goto end
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%SYNC_SCRIPT%" -SharedInput "%SHARED_INPUT%" -LocalDeleted "%LOCAL_OUTPUT%" -SharedOutput "%SHARED_OUTPUT%" -LocalInput "%LOCAL_INPUT%" -ReportDir "%REPORT_DIR%"
 if errorlevel 1 (
