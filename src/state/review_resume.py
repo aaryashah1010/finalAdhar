@@ -175,10 +175,6 @@ class ReviewResumeState:
             self._records = {}
             return
 
-        if payload.get("input_root") != str(self.input_root):
-            self._records = {}
-            return
-
         records = payload.get("files", {})
         self._records = records if isinstance(records, dict) else {}
 

@@ -55,25 +55,37 @@ if "%SHARED_OUTPUT%"=="" (
     exit /b 1
 )
 
-for %%P in ("%SHARED_INPUT%") do set "RUN_KEY=%%~nxP"
-if "%RUN_KEY%"=="" set "RUN_KEY=default"
+for %%P in ("%SHARED_INPUT%") do set "RUN_KEY_LEAF=%%~nxP"
+if "%RUN_KEY_LEAF%"=="" set "RUN_KEY_LEAF=default"
+set "RUN_KEY=%SHARED_INPUT%"
+set "RUN_KEY=%RUN_KEY::=%"
+set "RUN_KEY=%RUN_KEY:\=_%"
+set "RUN_KEY=%RUN_KEY:/=_%"
+set "RUN_KEY=%RUN_KEY: =_%"
+if "%RUN_KEY%"=="" set "RUN_KEY=%RUN_KEY_LEAF%"
 
 set "WORK_ROOT=%STAGED_BASE%\%RUN_KEY%"
 set "LOCAL_INPUT=%WORK_ROOT%\input"
 set "LOCAL_OUTPUT=%WORK_ROOT%\deleted"
 set "REPORT_DIR=%WORK_ROOT%\reports"
 set "SYNC_ARCHIVE=%WORK_ROOT%\synced\%RUN_ID%"
+set "LEGACY_OUTPUT_LEAF=%STAGED_BASE%\%RUN_KEY_LEAF%\deleted"
+set "LEGACY_OUTPUT_BLANK=%STAGED_BASE%\ \deleted"
 
 if not exist "%WORK_ROOT%" mkdir "%WORK_ROOT%"
 if not exist "%LOCAL_INPUT%" mkdir "%LOCAL_INPUT%"
 if not exist "%LOCAL_OUTPUT%" mkdir "%LOCAL_OUTPUT%"
 if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
+if not exist "%LOCAL_OUTPUT%\_review_resume_state.json" if exist "%LEGACY_OUTPUT_LEAF%\_review_resume_state.json" copy /Y "%LEGACY_OUTPUT_LEAF%\_review_resume_state.json" "%LOCAL_OUTPUT%\_review_resume_state.json" >nul
+if not exist "%LOCAL_OUTPUT%\_review_resume_state.json" if exist "%LEGACY_OUTPUT_BLANK%\_review_resume_state.json" copy /Y "%LEGACY_OUTPUT_BLANK%\_review_resume_state.json" "%LOCAL_OUTPUT%\_review_resume_state.json" >nul
+
 echo.
-echo Copying new/changed PDFs from shared folder to local input...
+echo Mirroring PDFs from shared folder to local input...
 echo From: %SHARED_INPUT%
 echo To:   %LOCAL_INPUT%
-robocopy "%SHARED_INPUT%" "%LOCAL_INPUT%" *.pdf /E /R:2 /W:2
+echo Workspace key: %RUN_KEY%
+robocopy "%SHARED_INPUT%" "%LOCAL_INPUT%" *.pdf /MIR /R:2 /W:2
 set "ROBOCOPY_EXIT=%ERRORLEVEL%"
 
 if %ROBOCOPY_EXIT% GEQ 8 (
@@ -86,6 +98,11 @@ if %ROBOCOPY_EXIT% GEQ 8 (
 
 set "AADHAAR_HOST_INPUT=%LOCAL_INPUT%"
 set "AADHAAR_HOST_OUTPUT=%LOCAL_OUTPUT%"
+
+if exist "%AADHAAR_HOST_OUTPUT%\_review_resume_state.json" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $p=Join-Path $env:AADHAAR_HOST_OUTPUT '_review_resume_state.json'; $j=Get-Content -Raw -LiteralPath $p | ConvertFrom-Json; $j.input_root=$env:AADHAAR_HOST_INPUT; $j | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $p -Encoding ASCII"
+    if errorlevel 1 echo Warning: could not update resume state path. Resume may restart from the beginning.
+)
 
 echo.
 echo Copy complete.
