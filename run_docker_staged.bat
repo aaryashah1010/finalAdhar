@@ -30,16 +30,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "WORK_ROOT=%CD%\client-data\staged-run"
-for /f "usebackq delims=" %%T in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "RUN_ID=%%T"
-set "LOCAL_INPUT=%WORK_ROOT%\input"
-set "LOCAL_OUTPUT=%WORK_ROOT%\deleted\%RUN_ID%"
-set "REPORT_DIR=%WORK_ROOT%\reports"
+set "STAGED_BASE=%CD%\client-data\staged-run"
 set "SYNC_SCRIPT=%CD%\tools\sync_deleted_to_shared.ps1"
-
-if not exist "%WORK_ROOT%" mkdir "%WORK_ROOT%"
-if not exist "%LOCAL_OUTPUT%" mkdir "%LOCAL_OUTPUT%"
-if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
+for /f "usebackq delims=" %%T in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "RUN_ID=%%T"
 
 echo Select the SHARED parent folder that contains PDFs and subfolders.
 echo Example: \\SERVER\Share\ParentFolder
@@ -62,11 +55,22 @@ if "%SHARED_OUTPUT%"=="" (
     exit /b 1
 )
 
-if exist "%LOCAL_INPUT%" rmdir /s /q "%LOCAL_INPUT%"
-mkdir "%LOCAL_INPUT%"
+for /f "usebackq delims=" %%K in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=$env:SHARED_INPUT.ToLowerInvariant(); $sha=[System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($s)); -join ($sha[0..7] ^| ForEach-Object { $_.ToString('x2') })"`) do set "RUN_KEY=%%K"
+if "%RUN_KEY%"=="" set "RUN_KEY=default"
+
+set "WORK_ROOT=%STAGED_BASE%\%RUN_KEY%"
+set "LOCAL_INPUT=%WORK_ROOT%\input"
+set "LOCAL_OUTPUT=%WORK_ROOT%\deleted"
+set "REPORT_DIR=%WORK_ROOT%\reports"
+set "SYNC_ARCHIVE=%WORK_ROOT%\synced\%RUN_ID%"
+
+if not exist "%WORK_ROOT%" mkdir "%WORK_ROOT%"
+if not exist "%LOCAL_INPUT%" mkdir "%LOCAL_INPUT%"
+if not exist "%LOCAL_OUTPUT%" mkdir "%LOCAL_OUTPUT%"
+if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
 echo.
-echo Copying PDFs from shared folder to local input...
+echo Copying new/changed PDFs from shared folder to local input...
 echo From: %SHARED_INPUT%
 echo To:   %LOCAL_INPUT%
 robocopy "%SHARED_INPUT%" "%LOCAL_INPUT%" *.pdf /E /R:2 /W:2
@@ -88,7 +92,8 @@ echo Copy complete.
 echo Starting Aadhaar detector using local folders only.
 echo.
 echo Local input:        %AADHAAR_HOST_INPUT%
-echo Local deleted:      %AADHAAR_HOST_OUTPUT%
+echo Local output:       %AADHAAR_HOST_OUTPUT%
+echo Resume state:       %AADHAAR_HOST_OUTPUT%\_review_resume_state.json
 echo Shared output:      %SHARED_OUTPUT%
 echo Browser will open after noVNC is ready.
 echo.
@@ -107,7 +112,7 @@ if errorlevel 1 (
 )
 
 docker compose down >nul 2>nul
-docker compose up -d
+docker compose up --force-recreate -d
 if errorlevel 1 (
     echo Docker start failed.
     pause
@@ -164,6 +169,16 @@ if errorlevel 1 (
 echo.
 echo Sync completed successfully. Report is in:
 echo %REPORT_DIR%
+
+echo Archiving synced local output while keeping resume state...
+if not exist "%SYNC_ARCHIVE%" mkdir "%SYNC_ARCHIVE%"
+for %%F in ("%LOCAL_OUTPUT%\*.pdf") do if exist "%%~fF" move /Y "%%~fF" "%SYNC_ARCHIVE%\" >nul
+if exist "%LOCAL_OUTPUT%\_deleted_manifest.json" move /Y "%LOCAL_OUTPUT%\_deleted_manifest.json" "%SYNC_ARCHIVE%\" >nul
+if exist "%LOCAL_OUTPUT%\_masked_keep_manifest.json" move /Y "%LOCAL_OUTPUT%\_masked_keep_manifest.json" "%SYNC_ARCHIVE%\" >nul
+if exist "%LOCAL_OUTPUT%\mask_keep_session.json" move /Y "%LOCAL_OUTPUT%\mask_keep_session.json" "%SYNC_ARCHIVE%\" >nul
+if exist "%LOCAL_OUTPUT%\.masked_keep_tmp" rmdir /s /q "%LOCAL_OUTPUT%\.masked_keep_tmp"
+echo Synced archive: %SYNC_ARCHIVE%
+echo Resume state kept: %LOCAL_OUTPUT%\_review_resume_state.json
 
 :end
 pause
