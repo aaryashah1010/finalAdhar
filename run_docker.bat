@@ -86,7 +86,7 @@ if errorlevel 1 (
     echo Docker image found locally. Skipping build.
 )
 
-docker compose up
+docker compose up --force-recreate
 
 echo.
 echo Docker app stopped.
