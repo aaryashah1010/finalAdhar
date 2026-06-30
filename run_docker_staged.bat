@@ -55,7 +55,7 @@ if "%SHARED_OUTPUT%"=="" (
     exit /b 1
 )
 
-for /f "usebackq delims=" %%K in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=$env:SHARED_INPUT.ToLowerInvariant(); $sha=[System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($s)); -join ($sha[0..7] ^| ForEach-Object { $_.ToString('x2') })"`) do set "RUN_KEY=%%K"
+for %%P in ("%SHARED_INPUT%") do set "RUN_KEY=%%~nxP"
 if "%RUN_KEY%"=="" set "RUN_KEY=default"
 
 set "WORK_ROOT=%STAGED_BASE%\%RUN_KEY%"
@@ -169,7 +169,10 @@ if errorlevel 1 (
 echo.
 echo Sync completed successfully. Report is in:
 echo %REPORT_DIR%
-
+echo.
+echo Deleted files copied to shared output:
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$report=Get-ChildItem -LiteralPath $env:REPORT_DIR -Filter 'sync_deleted_*.csv' ^| Sort-Object LastWriteTime -Descending ^| Select-Object -First 1; if ($report) { Import-Csv -LiteralPath $report.FullName ^| Where-Object { $_.Operation -eq 'Delete' -and $_.Status -like 'COPIED_*' } ^| ForEach-Object { Write-Host ('  ' + $_.SharedOutput) } }"
+echo.
 echo Archiving synced local output while keeping resume state...
 if not exist "%SYNC_ARCHIVE%" mkdir "%SYNC_ARCHIVE%"
 for %%F in ("%LOCAL_OUTPUT%\*.pdf") do if exist "%%~fF" move /Y "%%~fF" "%SYNC_ARCHIVE%\" >nul
