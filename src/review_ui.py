@@ -36,6 +36,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.aadhaar_detector import AadhaarFileScanner, DetectionResult
+from src.state.review_resume import ReviewResumeState
 from src.utils.file_utils import atomic_json_write, safe_json_read
 
 logger = logging.getLogger(__name__)
@@ -70,30 +71,51 @@ class ScanWorker(QThread):
     progress      = pyqtSignal(int, int, str) # current, total, name
     scan_complete = pyqtSignal(int, int)      # scanned, aadhaar_count
 
-    def __init__(self, pdf_paths: List[Path], dpi: int = 150) -> None:
+    def __init__(
+        self,
+        pdf_paths: List[Path],
+        resume_state: ReviewResumeState,
+        total_count: int,
+        already_done_count: int,
+        dpi: int = 150,
+    ) -> None:
         super().__init__()
         self._paths   = pdf_paths
+        self._resume_state = resume_state
+        self._total_count = total_count
+        self._already_done_count = already_done_count
         self._scanner = AadhaarFileScanner(render_dpi=dpi)
 
     def run(self) -> None:
-        total         = len(self._paths)
+        total         = self._total_count
         aadhaar_count = 0
 
         for i, path in enumerate(self._paths, start=1):
-            self.progress.emit(i, total, path.name)
+            self._resume_state.mark_scanning(path)
+            self.progress.emit(self._already_done_count + i, total, path.name)
             result = self._scanner.scan(path)
 
             if result.is_aadhaar:
                 aadhaar_count += 1
+                self._resume_state.mark_pending_review(
+                    path, result.confidence, result.reasons
+                )
                 logger.info("Aadhaar: %s (conf=%.2f)", path.name, result.confidence)
                 self.aadhaar_found.emit(result)
             elif result.is_uncertain:
+                self._resume_state.mark_pending_review(
+                    path, result.confidence, result.reasons
+                )
                 logger.info("Uncertain (blurry): %s", path.name)
                 self.aadhaar_found.emit(result)
             else:
                 logger.info("Not Aadhaar: %s", path.name)
+                if result.reasons and result.reasons[0].startswith(("Error:", "Cannot open")):
+                    self._resume_state.mark_error(path, result.reasons[0])
+                else:
+                    self._resume_state.mark_not_aadhaar(path)
 
-        self.scan_complete.emit(total, aadhaar_count)
+        self.scan_complete.emit(self._already_done_count + len(self._paths), aadhaar_count)
 
 
 # ── Review window ─────────────────────────────────────────────────────────────
@@ -118,6 +140,7 @@ class ReviewWindow(QMainWindow):
         super().__init__()
         self.input_folder  = input_folder
         self.output_folder = output_folder
+        self._resume = ReviewResumeState(self.input_folder, self.output_folder)
 
         # Review queue: DetectionResult objects waiting to be shown
         self._queue: Deque[DetectionResult] = deque()
@@ -247,8 +270,32 @@ class ReviewWindow(QMainWindow):
             self._status.setText("No PDF files found in the selected folder.")
             return
 
+        self._resume.reconcile(pdfs)
+        scan_paths = self._resume.scan_paths(pdfs)
+        already_done = self._resume.completed_count(pdfs)
+        counts = self._resume.counts()
+
         self._progress.setMaximum(len(pdfs))
-        self._worker = ScanWorker(pdfs)
+        self._progress.setValue(already_done)
+
+        if not scan_paths:
+            self._scan_done = True
+            self._status.setText(
+                f"Resume complete: {already_done}/{len(pdfs)} file(s) already handled."
+            )
+            return
+
+        self._status.setText(
+            f"Resuming: {already_done}/{len(pdfs)} done, "
+            f"{len(scan_paths)} file(s) pending. "
+            f"{counts.get('aadhaar_pending_review', 0)} waiting for review."
+        )
+        self._worker = ScanWorker(
+            scan_paths,
+            resume_state=self._resume,
+            total_count=len(pdfs),
+            already_done_count=already_done,
+        )
         self._worker.progress.connect(self._on_progress)
         self._worker.aadhaar_found.connect(self._on_aadhaar_found)
         self._worker.scan_complete.connect(self._on_scan_complete)
@@ -272,8 +319,8 @@ class ReviewWindow(QMainWindow):
     def _on_scan_complete(self, total: int, aadhaar: int) -> None:
         self._scan_done = True
         self._status.setText(
-            f"Scan complete — {total} file(s) scanned, "
-            f"{aadhaar} Aadhaar card(s) found."
+            f"Scan complete — {total} file(s) handled, "
+            f"{aadhaar} Aadhaar card(s) found in this run."
         )
         self._progress.setValue(self._progress.maximum())
         if self._current is None and not self._queue:
@@ -350,6 +397,7 @@ class ReviewWindow(QMainWindow):
     def _on_keep(self) -> None:
         if self._current:
             logger.info("Kept: %s", self._current.path.name)
+            self._resume.mark_kept(self._current.path)
         self._current = None
         self._keep_btn.setEnabled(False)
         self._mask_keep_btn.setEnabled(False)
@@ -413,6 +461,7 @@ class ReviewWindow(QMainWindow):
             self._replace_with_masked_pdf(result.path, masked_path)
             rel = self._relative_to_input(result.path)
             self._record_masked_keep(rel)
+            self._resume.mark_masked(result.path)
             logger.info("Masked and kept: %s", result.path.name)
             self._status.setText(f"Masked and kept: {result.path.name}")
             self._current = None
@@ -446,6 +495,7 @@ class ReviewWindow(QMainWindow):
         try:
             shutil.move(str(src), str(dst))
             self._record_deleted_file(rel, dst)
+            self._resume.mark_deleted(src, dst)
             logger.info("Moved: %s → %s", src.name, dst)
             self._status.setText(f"Deleted: {src.name} → output folder")
         except Exception as exc:

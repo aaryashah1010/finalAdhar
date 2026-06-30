@@ -38,8 +38,10 @@ tmp*/
 node_modules/
 
 # Runtime state and downloaded models
-state/
-models/
+/state/
+/models/
 session.json
 
 .early.coverage
+.vendor313/
+.venv_build/
