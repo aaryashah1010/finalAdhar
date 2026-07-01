@@ -111,6 +111,12 @@ echo.
 echo Local input:        %AADHAAR_HOST_INPUT%
 echo Local output:       %AADHAAR_HOST_OUTPUT%
 echo Resume state:       %AADHAAR_HOST_OUTPUT%\_review_resume_state.json
+if exist "%AADHAAR_HOST_OUTPUT%\_review_resume_state.json" (
+    echo Existing resume state summary:
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:AADHAAR_HOST_OUTPUT '_review_resume_state.json'; $j=Get-Content -Raw -LiteralPath $p | ConvertFrom-Json; $counts=@{}; foreach ($prop in $j.files.PSObject.Properties) { $s=[string]$prop.Value.status; if (-not $s) { $s='unknown' }; if ($counts.ContainsKey($s)) { $counts[$s]++ } else { $counts[$s]=1 } }; foreach ($k in $counts.Keys) { Write-Host ('  ' + $k + ': ' + $counts[$k]) }"
+) else (
+    echo No resume state found yet for this input folder.
+)
 echo Shared output:      %SHARED_OUTPUT%
 echo Browser will open after noVNC is ready.
 echo.
@@ -188,7 +194,7 @@ echo Sync completed successfully. Report is in:
 echo %REPORT_DIR%
 echo.
 echo Deleted files copied to shared output:
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$report=Get-ChildItem -LiteralPath $env:REPORT_DIR -Filter 'sync_deleted_*.csv' ^| Sort-Object LastWriteTime -Descending ^| Select-Object -First 1; if ($report) { Import-Csv -LiteralPath $report.FullName ^| Where-Object { $_.Operation -eq 'Delete' -and $_.Status -like 'COPIED_*' } ^| ForEach-Object { Write-Host ('  ' + $_.SharedOutput) } }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$report=Get-ChildItem -LiteralPath $env:REPORT_DIR -Filter 'sync_deleted_*.csv' | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($report) { Import-Csv -LiteralPath $report.FullName | Where-Object { $_.Operation -eq 'Delete' -and $_.Status -like 'COPIED_*' } | ForEach-Object { Write-Host ('  ' + $_.SharedOutput) } }"
 echo.
 echo Archiving synced local output while keeping resume state...
 if not exist "%SYNC_ARCHIVE%" mkdir "%SYNC_ARCHIVE%"
