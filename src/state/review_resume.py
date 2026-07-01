@@ -37,6 +37,8 @@ DONE_STATUSES = {
     STATUS_MASKED,
 }
 
+SCANNED_STATUSES = DONE_STATUSES | {STATUS_PENDING_REVIEW}
+
 
 class ReviewResumeState:
     """Small JSON-backed resume store for scan/review progress."""
@@ -89,8 +91,20 @@ class ReviewResumeState:
             out: list[Path] = []
             for path in pdf_paths:
                 status = self._records.get(self.rel_path(path), {}).get("status")
-                if status in (STATUS_PENDING_SCAN, STATUS_PENDING_REVIEW, STATUS_ERROR, None):
+                if status in (STATUS_PENDING_SCAN, STATUS_ERROR, None):
                     out.append(path)
+            return out
+
+    def pending_review_records(self, pdf_paths: Iterable[Path]) -> list[dict]:
+        with self._lock:
+            out: list[dict] = []
+            for path in pdf_paths:
+                record = self._records.get(self.rel_path(path))
+                if not record or record.get("status") != STATUS_PENDING_REVIEW:
+                    continue
+                item = dict(record)
+                item["path"] = path
+                out.append(item)
             return out
 
     def completed_count(self, pdf_paths: Iterable[Path]) -> int:
@@ -98,7 +112,7 @@ class ReviewResumeState:
             count = 0
             for path in pdf_paths:
                 status = self._records.get(self.rel_path(path), {}).get("status")
-                if status in DONE_STATUSES:
+                if status in SCANNED_STATUSES:
                     count += 1
             return count
 
@@ -124,12 +138,19 @@ class ReviewResumeState:
     def mark_not_aadhaar(self, path: Path) -> None:
         self._mark(path, STATUS_NOT_AADHAAR)
 
-    def mark_pending_review(self, path: Path, confidence: float, reasons: list[str]) -> None:
+    def mark_pending_review(
+        self,
+        path: Path,
+        confidence: float,
+        reasons: list[str],
+        is_uncertain: bool = False,
+    ) -> None:
         self._mark(
             path,
             STATUS_PENDING_REVIEW,
             confidence=confidence,
             reasons=list(reasons),
+            is_uncertain=is_uncertain,
         )
 
     def mark_kept(self, path: Path) -> None:

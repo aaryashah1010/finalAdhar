@@ -104,7 +104,7 @@ class ScanWorker(QThread):
                 self.aadhaar_found.emit(result)
             elif result.is_uncertain:
                 self._resume_state.mark_pending_review(
-                    path, result.confidence, result.reasons
+                    path, result.confidence, result.reasons, is_uncertain=True
                 )
                 logger.info("Uncertain (blurry): %s", path.name)
                 self.aadhaar_found.emit(result)
@@ -271,23 +271,46 @@ class ReviewWindow(QMainWindow):
             return
 
         self._resume.reconcile(pdfs)
+        resumed_review = self._resume.pending_review_records(pdfs)
+        for item in resumed_review:
+            confidence = float(item.get("confidence") or 0.0)
+            reasons = item.get("reasons") or ["Previously detected - waiting for review"]
+            if not isinstance(reasons, list):
+                reasons = [str(reasons)]
+            is_uncertain = bool(item.get("is_uncertain", False))
+            self._queue.append(
+                DetectionResult(
+                    path=item["path"],
+                    is_aadhaar=not is_uncertain,
+                    confidence=confidence,
+                    reasons=[str(reason) for reason in reasons],
+                    preview_image=None,
+                    is_uncertain=is_uncertain,
+                )
+            )
+
         scan_paths = self._resume.scan_paths(pdfs)
         already_done = self._resume.completed_count(pdfs)
         counts = self._resume.counts()
 
         self._progress.setMaximum(len(pdfs))
         self._progress.setValue(already_done)
+        if self._current is None and self._queue:
+            self._show_next()
 
         if not scan_paths:
             self._scan_done = True
             self._status.setText(
-                f"Resume complete: {already_done}/{len(pdfs)} file(s) already handled."
+                f"Resume complete: {already_done}/{len(pdfs)} file(s) already scanned, "
+                f"{len(self._queue)} waiting for review."
             )
+            if self._current is None and not self._queue:
+                self._show_idle("All done! No more files to review.")
             return
 
         self._status.setText(
-            f"Resuming: {already_done}/{len(pdfs)} done, "
-            f"{len(scan_paths)} file(s) pending. "
+            f"Resuming: {already_done}/{len(pdfs)} scanned, "
+            f"{len(scan_paths)} file(s) pending scan. "
             f"{counts.get('aadhaar_pending_review', 0)} waiting for review."
         )
         self._worker = ScanWorker(
@@ -357,6 +380,8 @@ class ReviewWindow(QMainWindow):
             self._reason_label.setText(f"Detected by: {result.reason_str}")
 
         # PDF page image
+        if result.preview_image is None:
+            result.preview_image = self._render_preview_only(result.path)
         if result.preview_image is not None:
             self._display_image(result.preview_image)
         else:
@@ -365,6 +390,22 @@ class ReviewWindow(QMainWindow):
         self._keep_btn.setEnabled(True)
         self._mask_keep_btn.setEnabled(True)
         self._delete_btn.setEnabled(True)
+
+    def _render_preview_only(self, path: Path) -> Optional[np.ndarray]:
+        from src.modules.pdf_renderer.renderer import PDFProcessor
+
+        renderer = PDFProcessor(dpi=72)
+        try:
+            load = renderer.load_pdf(str(path))
+            if not load.success:
+                return None
+            pages = [page["image"] for page in renderer.extract_pages()]
+            return AadhaarFileScanner._stitch_pages(pages)
+        except Exception as exc:
+            logger.warning("Preview render failed for %s: %s", path.name, exc)
+            return None
+        finally:
+            renderer.cleanup()
 
     def _display_image(self, bgr: np.ndarray) -> None:
         pixmap = _bgr_to_pixmap(bgr)
