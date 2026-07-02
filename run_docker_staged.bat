@@ -69,16 +69,12 @@ set "LOCAL_INPUT=%WORK_ROOT%\input"
 set "LOCAL_OUTPUT=%WORK_ROOT%\deleted"
 set "REPORT_DIR=%WORK_ROOT%\reports"
 set "SYNC_ARCHIVE=%WORK_ROOT%\synced\%RUN_ID%"
-set "LEGACY_OUTPUT_LEAF=%STAGED_BASE%\%RUN_KEY_LEAF%\deleted"
-set "LEGACY_OUTPUT_BLANK=%STAGED_BASE%\ \deleted"
 
 if not exist "%WORK_ROOT%" mkdir "%WORK_ROOT%"
 if not exist "%LOCAL_INPUT%" mkdir "%LOCAL_INPUT%"
 if not exist "%LOCAL_OUTPUT%" mkdir "%LOCAL_OUTPUT%"
 if not exist "%REPORT_DIR%" mkdir "%REPORT_DIR%"
 
-if not exist "%LOCAL_OUTPUT%\_review_resume_state.json" if exist "%LEGACY_OUTPUT_LEAF%\_review_resume_state.json" copy /Y "%LEGACY_OUTPUT_LEAF%\_review_resume_state.json" "%LOCAL_OUTPUT%\_review_resume_state.json" >nul
-if not exist "%LOCAL_OUTPUT%\_review_resume_state.json" if exist "%LEGACY_OUTPUT_BLANK%\_review_resume_state.json" copy /Y "%LEGACY_OUTPUT_BLANK%\_review_resume_state.json" "%LOCAL_OUTPUT%\_review_resume_state.json" >nul
 
 echo.
 echo Mirroring PDFs from shared folder to local input...
