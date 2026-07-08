@@ -41,7 +41,7 @@ def main() -> None:
     logging.basicConfig(
         format  = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt = "%H:%M:%S",
-        level   = logging.DEBUG,
+        level   = logging.INFO,
         stream  = sys.stdout,
     )
     for noisy in ("easyocr", "PIL", "matplotlib", "torch", "torchvision"):

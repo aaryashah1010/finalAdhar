@@ -240,10 +240,28 @@ if (Test-Path -LiteralPath $maskedManifestPath -PathType Leaf) {
 
     foreach ($relativePath in $maskedFiles) {
         $maskedCount += 1
-        $localMaskedPath = Join-RelativePath -Root $LocalInput -RelativePath $relativePath
-        $sharedOriginalPath = Join-RelativePath -Root $SharedInput -RelativePath $relativePath
         $status = "UNKNOWN"
         $message = ""
+
+        # Reject unsafe paths (absolute or containing "..") before building any
+        # filesystem path, so a tampered/corrupt manifest cannot write outside
+        # the intended shared folder. Mirrors the check used in the delete loop.
+        if (-not (Test-SafeRelativePath $relativePath)) {
+            $rows.Add([pscustomobject]@{
+                Operation = "MaskKeep"
+                Status = "MANIFEST_INVALID"
+                RelativePath = $relativePath
+                LocalDeleted = ""
+                LocalMasked = ""
+                SharedOutput = ""
+                SharedOriginal = ""
+                Message = "Masked manifest entry had an unsafe relative path."
+            }) | Out-Null
+            continue
+        }
+
+        $localMaskedPath = Join-RelativePath -Root $LocalInput -RelativePath $relativePath
+        $sharedOriginalPath = Join-RelativePath -Root $SharedInput -RelativePath $relativePath
 
         try {
             if (-not (Test-Path -LiteralPath $localMaskedPath -PathType Leaf)) {

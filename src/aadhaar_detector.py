@@ -336,9 +336,9 @@ class AadhaarFileScanner:
             # ── Layer 5: Extended keyword-only (catches masked cards) ─────
             for i, pt in enumerate(pages_text):
                 raw = pt["text"]
-                logger.debug("[EXTCHECK %s p%d] text_len=%d | first200: %s",
-                             pdf_path.name, i+1, len(raw),
-                             raw.strip().replace("\n"," ")[:200])
+                # Log only the length — never the OCR text, which contains the number.
+                logger.debug("[EXTCHECK %s p%d] text_len=%d",
+                             pdf_path.name, i+1, len(raw))
                 hit, reason = self._extended_keyword_check(raw)
                 if hit:
                     has_qr = (self._detect_qr_enhanced(page_images[i])
@@ -442,10 +442,9 @@ class AadhaarFileScanner:
             text = self._tess(rot, lang, cfg)
             tl   = text.lower()
 
-            # ── DEBUG: log first 300 chars of OCR output ──────────────────
-            preview = text.strip().replace("\n", " ")[:300]
-            logger.debug("[OCR %s] %d° → chars=%d | %s",
-                         debug_name, angle, len(text), preview)
+            # Log only the character count — never the OCR text itself,
+            # which would contain the Aadhaar number.
+            logger.debug("[OCR %s] %d° → chars=%d", debug_name, angle, len(text))
 
             # Early exit — any Aadhaar signal found, skip remaining rotations
             if any(kw in tl for kw in _STRONG_EN):

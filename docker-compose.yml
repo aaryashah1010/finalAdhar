@@ -4,11 +4,17 @@ services:
     build: .
     container_name: aadhaar-detector
     ports:
-      - "6080:6080"
+      # Bind to localhost only so the review screen (which shows Aadhaar PII)
+      # is NOT reachable from other machines on the network. The operator's
+      # own browser still reaches it via http://localhost:6080/.
+      - "127.0.0.1:6080:6080"
     environment:
       AADHAAR_INPUT_DIR: /data/input
       AADHAAR_OUTPUT_DIR: /data/output
       VNC_RESOLUTION: 1280x900x24
+      # Password required to open the review screen. CHANGE THIS before shipping,
+      # and tell the operator the value — they must type it in the browser.
+      VNC_PASSWORD: "vpd1010"
     volumes:
       - ${AADHAAR_HOST_INPUT:-./client-data/input}:/data/input
       - ${AADHAAR_HOST_OUTPUT:-./client-data/output}:/data/output

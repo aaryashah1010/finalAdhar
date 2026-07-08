@@ -13,7 +13,10 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
 done
 
 fluxbox >/tmp/fluxbox.log 2>&1 &
-x11vnc -display "$DISPLAY" -forever -shared -nopw -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+# Require a password before the review screen (which shows Aadhaar PII) can be
+# accessed. The password comes from VNC_PASSWORD (set in docker-compose.yml).
+x11vnc -storepasswd "${VNC_PASSWORD:-aadhaar123}" /tmp/vncpass >/dev/null 2>&1
+x11vnc -display "$DISPLAY" -forever -shared -rfbauth /tmp/vncpass -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
 
 sleep 1
