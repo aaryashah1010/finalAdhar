@@ -15,8 +15,15 @@ done
 fluxbox >/tmp/fluxbox.log 2>&1 &
 # Require a password before the review screen (which shows Aadhaar PII) can be
 # accessed. The password comes from VNC_PASSWORD (set in docker-compose.yml).
-x11vnc -storepasswd "${VNC_PASSWORD:-aadhaar123}" /tmp/vncpass >/dev/null 2>&1
-x11vnc -display "$DISPLAY" -forever -shared -rfbauth /tmp/vncpass -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+# The storepasswd step is wrapped in an `if` so that `set -e` cannot abort the
+# container if it returns non-zero; if the password file can't be created we
+# fall back to supplying the password inline.
+VNC_PW="${VNC_PASSWORD:-aadhaar123}"
+if x11vnc -storepasswd "$VNC_PW" /tmp/vncpass >/tmp/x11vnc_pw.log 2>&1 && [ -s /tmp/vncpass ]; then
+    x11vnc -display "$DISPLAY" -forever -shared -rfbauth /tmp/vncpass -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+else
+    x11vnc -display "$DISPLAY" -forever -shared -passwd "$VNC_PW" -rfbport 5900 >/tmp/x11vnc.log 2>&1 &
+fi
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/tmp/novnc.log 2>&1 &
 
 sleep 1
