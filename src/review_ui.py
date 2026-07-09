@@ -152,12 +152,12 @@ class ReviewWindow(QMainWindow):
         self._total_scanned  = 0
         self._total_aadhaar  = 0
         self._scan_done      = False
+        self._scan_started   = False
 
         self.setWindowTitle("Aadhaar Card Detector")
         self.setMinimumSize(860, 700)
 
         self._build_ui()
-        self._start_scan()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -169,9 +169,16 @@ class ReviewWindow(QMainWindow):
         vbox.setContentsMargins(14, 14, 14, 14)
 
         # ── Top bar ───────────────────────────────────────────────────────
-        self._status = QLabel("Initialising scanner…")
+        top_row = QHBoxLayout()
+        self._status = QLabel("Ready. Enter the VNC password, then click Start Scan.")
         self._status.setFont(QFont("Segoe UI", 10))
-        vbox.addWidget(self._status)
+        top_row.addWidget(self._status, 1)
+
+        self._start_btn = QPushButton("Start Scan")
+        self._start_btn.setFixedWidth(120)
+        self._start_btn.clicked.connect(self._on_start_scan_clicked)
+        top_row.addWidget(self._start_btn)
+        vbox.addLayout(top_row)
 
         self._progress = QProgressBar()
         self._progress.setValue(0)
@@ -264,10 +271,21 @@ class ReviewWindow(QMainWindow):
 
     # ── Scanning ──────────────────────────────────────────────────────────────
 
+    def _on_start_scan_clicked(self) -> None:
+        self._start_scan()
+
     def _start_scan(self) -> None:
+        if self._scan_started:
+            return
+        self._scan_started = True
+        self._start_btn.setEnabled(False)
+        self._start_btn.setText("Scanning")
+        self._status.setText("Preparing scanner...")
+
         pdfs = sorted(self.input_folder.rglob("*.pdf"))
         if not pdfs:
             self._status.setText("No PDF files found in the selected folder.")
+            self._start_btn.setText("No PDFs")
             return
 
         self._resume.reconcile(pdfs)
@@ -304,6 +322,7 @@ class ReviewWindow(QMainWindow):
                 f"Resume complete: {already_done}/{len(pdfs)} file(s) already scanned, "
                 f"{len(self._queue)} waiting for review."
             )
+            self._start_btn.setText("Done")
             if self._current is None and not self._queue:
                 self._show_idle("All done! No more files to review.")
             return
@@ -346,6 +365,7 @@ class ReviewWindow(QMainWindow):
             f"{aadhaar} Aadhaar card(s) found in this run."
         )
         self._progress.setValue(self._progress.maximum())
+        self._start_btn.setText("Done")
         if self._current is None and not self._queue:
             self._show_idle("All done! No more files to review.")
 

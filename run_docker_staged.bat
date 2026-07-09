@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "APP_URL=http://localhost:6080/vnc.html?autoconnect=true^&resize=scale"
+set "APP_URL=http://127.0.0.1:6080/vnc.html?resize=scale"
 set "APP_IMAGE=finaladhar-aadhaar-detector:latest"
 
 cd /d "%~dp0"
@@ -140,7 +140,7 @@ if errorlevel 1 (
 
 echo.
 echo Waiting for noVNC to become ready...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='http://localhost:6080/vnc.html'; $deadline=(Get-Date).AddSeconds(120); while ((Get-Date) -lt $deadline) { try { $r=Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2; if ($r.StatusCode -ge 200) { Start-Sleep -Seconds 2; exit 0 } } catch { }; Start-Sleep -Seconds 1 }; exit 1"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u='http://127.0.0.1:6080/vnc.html'; $deadline=(Get-Date).AddSeconds(120); while ((Get-Date) -lt $deadline) { try { $r=Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2; if ($r.StatusCode -ge 200) { Start-Sleep -Seconds 2; exit 0 } } catch { }; Start-Sleep -Seconds 1 }; exit 1"
 if errorlevel 1 (
     echo noVNC did not become ready in time. Recent container logs:
     docker compose logs --tail=100 aadhaar-detector

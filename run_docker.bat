@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "APP_URL=http://localhost:6080/vnc.html?autoconnect=true^&resize=scale"
+set "APP_URL=http://127.0.0.1:6080/vnc.html?resize=scale"
 set "APP_IMAGE=finaladhar-aadhaar-detector:latest"
 
 cd /d "%~dp0"
@@ -59,7 +59,7 @@ echo Put PDFs in: %AADHAAR_HOST_INPUT%
 echo Deleted/moved files will go to: %AADHAAR_HOST_OUTPUT%
 echo.
 echo Browser URL:
-echo http://localhost:6080/vnc.html?autoconnect=true^&resize=scale
+echo http://127.0.0.1:6080/vnc.html?resize=scale
 echo.
 echo Starting Docker container. The first run can take several minutes.
 echo Keep this window open while using the app.
